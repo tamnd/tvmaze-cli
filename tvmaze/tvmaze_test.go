@@ -12,52 +12,25 @@ import (
 )
 
 const fakeSearchJSON = `[
-  {"score":0.9,"show":{"id":169,"name":"Breaking Bad","type":"Scripted","genres":["Drama","Crime"],"status":"Ended","premiered":"2008-01-20","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A chemistry teacher.</p>","url":"https://www.tvmaze.com/shows/169/breaking-bad"}},
-  {"score":0.7,"show":{"id":1371,"name":"Better Call Saul","type":"Scripted","genres":["Drama"],"status":"Ended","premiered":"2015-02-08","rating":{"average":8.9},"network":{"name":"AMC"},"summary":"<p>A prequel.</p>","url":"https://www.tvmaze.com/shows/1371/better-call-saul"}}
+  {"score":0.9,"show":{"id":169,"name":"Breaking Bad","type":"Scripted","language":"English","genres":["Drama","Crime"],"status":"Ended","premiered":"2008-01-20","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A chemistry teacher.</p>"}},
+  {"score":0.7,"show":{"id":1371,"name":"Better Call Saul","type":"Scripted","language":"English","genres":["Drama"],"status":"Ended","premiered":"2015-02-08","rating":{"average":8.9},"network":{"name":"AMC"},"summary":"<p>A prequel.</p>"}}
 ]`
 
 const fakeScheduleJSON = `[
-  {"id":100001,"name":"Ep1","season":1,"number":1,"show":{"id":169,"name":"Breaking Bad","type":"Scripted","genres":["Drama"],"status":"Running","premiered":"2026-01-01","rating":{"average":8.5},"network":{"name":"AMC"},"summary":"<p>A drama.</p>","url":"https://www.tvmaze.com/shows/169/test"}},
-  {"id":100002,"name":"Ep2","season":1,"number":2,"show":{"id":999,"name":"Test Show","type":"Scripted","genres":[],"status":"Running","premiered":"2026-01-01","rating":{"average":7.0},"network":{"name":"NBC"},"summary":"","url":"https://www.tvmaze.com/shows/999/test"}}
+  {"id":100001,"name":"Ep1","season":1,"number":1,"airdate":"2024-01-15","airtime":"21:00","show":{"id":169,"name":"Breaking Bad","network":{"name":"AMC"}}},
+  {"id":100002,"name":"Ep2","season":1,"number":2,"airdate":"2024-01-15","airtime":"22:00","show":{"id":999,"name":"Test Show","network":{"name":"NBC"}}}
 ]`
 
-const fakeScheduleDupeJSON = `[
-  {
-    "id": 100001,
-    "name": "Episode 1",
-    "season": 5,
-    "number": 1,
-    "show": {
-      "id": 169,
-      "name": "Breaking Bad",
-      "type": "Scripted",
-      "genres": ["Drama"],
-      "status": "Running",
-      "premiered": "2026-01-01",
-      "rating": {"average": 8.5},
-      "network": {"name": "AMC"},
-      "summary": "<p>A drama show.</p>",
-      "url": "https://www.tvmaze.com/shows/169/test"
-    }
-  },
-  {
-    "id": 100002,
-    "name": "Episode 2",
-    "season": 5,
-    "number": 2,
-    "show": {
-      "id": 169,
-      "name": "Breaking Bad",
-      "type": "Scripted",
-      "genres": ["Drama"],
-      "status": "Running",
-      "premiered": "2026-01-01",
-      "rating": {"average": 8.5},
-      "network": {"name": "AMC"},
-      "summary": "<p>A drama show.</p>",
-      "url": "https://www.tvmaze.com/shows/169/test"
-    }
-  }
+const fakeShowJSON = `{"id":169,"name":"Breaking Bad","type":"Scripted","language":"English","genres":["Drama","Crime","Thriller"],"status":"Ended","premiered":"2008-01-20","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A high school chemistry teacher.</p>"}`
+
+const fakeEpisodesJSON = `[
+  {"id":1,"name":"Pilot","season":1,"number":1,"airdate":"2008-01-20","summary":"<p>Walter White.</p>","runtime":58,"rating":{"average":8.0}},
+  {"id":2,"name":"Cat's in the Bag","season":1,"number":2,"airdate":"2008-01-27","summary":"<p>Walt and Jesse.</p>","runtime":48,"rating":{"average":7.5}}
+]`
+
+const fakeCastJSON = `[
+  {"person":{"id":1,"name":"Bryan Cranston","birthday":"1956-03-07","country":{"name":"United States"}},"character":{"name":"Walter White"},"self":false,"voice":false},
+  {"person":{"id":2,"name":"Aaron Paul","birthday":"1979-08-27","country":{"name":"United States"}},"character":{"name":"Jesse Pinkman"},"self":false,"voice":false}
 ]`
 
 func newTestClient(ts *httptest.Server) *tvmaze.Client {
@@ -102,8 +75,8 @@ func TestSearchParsesItems(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("len(items) = %d, want 2", len(items))
 	}
-	if items[0].Rank != 1 {
-		t.Errorf("items[0].Rank = %d, want 1", items[0].Rank)
+	if items[0].ID != 169 {
+		t.Errorf("items[0].ID = %d, want 169", items[0].ID)
 	}
 	if items[0].Name != "Breaking Bad" {
 		t.Errorf("items[0].Name = %q, want Breaking Bad", items[0].Name)
@@ -114,12 +87,11 @@ func TestSearchParsesItems(t *testing.T) {
 	if items[0].Network != "AMC" {
 		t.Errorf("items[0].Network = %q, want AMC", items[0].Network)
 	}
+	if items[0].Language != "English" {
+		t.Errorf("items[0].Language = %q, want English", items[0].Language)
+	}
 	if strings.Contains(items[0].Summary, "<p>") {
 		t.Errorf("items[0].Summary contains HTML tags: %q", items[0].Summary)
-	}
-	const wantURLPrefix = "https://www.tvmaze.com/"
-	if !strings.HasPrefix(items[0].URL, wantURLPrefix) {
-		t.Errorf("items[0].URL = %q, want prefix %q", items[0].URL, wantURLPrefix)
 	}
 }
 
@@ -166,62 +138,6 @@ func TestSearchRetriesOn503(t *testing.T) {
 	}
 }
 
-func TestScheduleParsesItems(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprint(w, fakeScheduleJSON)
-	}))
-	defer ts.Close()
-
-	c := newTestClient(ts)
-	items, err := c.Schedule(context.Background(), "US", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 2 {
-		t.Fatalf("len(items) = %d, want 2", len(items))
-	}
-	if items[0].Rank != 1 {
-		t.Errorf("items[0].Rank = %d, want 1", items[0].Rank)
-	}
-	if items[0].Name != "Breaking Bad" {
-		t.Errorf("items[0].Name = %q, want Breaking Bad", items[0].Name)
-	}
-	if strings.Contains(items[0].Summary, "<p>") {
-		t.Errorf("items[0].Summary contains HTML tags: %q", items[0].Summary)
-	}
-	if items[1].Name != "Test Show" {
-		t.Errorf("items[1].Name = %q, want Test Show", items[1].Name)
-	}
-}
-
-func TestScheduleDeduplicates(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprint(w, fakeScheduleDupeJSON)
-	}))
-	defer ts.Close()
-
-	c := newTestClient(ts)
-	items, err := c.Schedule(context.Background(), "US", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 {
-		t.Errorf("len(items) = %d, want 1 (deduplication)", len(items))
-	}
-}
-
-const fakeShowJSON = `{"id":169,"name":"Breaking Bad","type":"Scripted","genres":["Drama","Crime","Thriller"],"status":"Ended","premiered":"2008-01-20","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A high school chemistry teacher.</p>","url":"https://www.tvmaze.com/shows/169/breaking-bad"}`
-
-const fakeEpisodesJSON = `[
-  {"id":1,"name":"Pilot","season":1,"number":1,"airdate":"2008-01-20","summary":"<p>Walter White.</p>","runtime":58},
-  {"id":2,"name":"Cat's in the Bag","season":1,"number":2,"airdate":"2008-01-27","summary":"<p>Walt and Jesse.</p>","runtime":48}
-]`
-
-const fakeCastJSON = `[
-  {"person":{"name":"Bryan Cranston","birthday":"1956-03-07"},"character":{"name":"Walter White"}},
-  {"person":{"name":"Aaron Paul","birthday":"1979-08-27"},"character":{"name":"Jesse Pinkman"}}
-]`
-
 func TestGetShowParses(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/shows/") {
@@ -250,6 +166,9 @@ func TestGetShowParses(t *testing.T) {
 	}
 	if show.Network != "AMC" {
 		t.Errorf("Network = %q, want AMC", show.Network)
+	}
+	if show.Language != "English" {
+		t.Errorf("Language = %q, want English", show.Language)
 	}
 }
 
@@ -289,6 +208,9 @@ func TestEpisodesParsesItems(t *testing.T) {
 	if ep.Runtime != 58 {
 		t.Errorf("Runtime = %d, want 58", ep.Runtime)
 	}
+	if ep.Rating != 8.0 {
+		t.Errorf("Rating = %v, want 8.0", ep.Rating)
+	}
 	if strings.Contains(ep.Summary, "<p>") {
 		t.Errorf("Summary contains HTML: %q", ep.Summary)
 	}
@@ -312,16 +234,115 @@ func TestCastParsesItems(t *testing.T) {
 		t.Fatalf("len(cast) = %d, want 2", len(cast))
 	}
 	m := cast[0]
+	if m.PersonID != 1 {
+		t.Errorf("PersonID = %d, want 1", m.PersonID)
+	}
 	if m.PersonName != "Bryan Cranston" {
 		t.Errorf("PersonName = %q, want Bryan Cranston", m.PersonName)
 	}
-	if m.CharacterName != "Walter White" {
-		t.Errorf("CharacterName = %q, want Walter White", m.CharacterName)
+	if m.Character != "Walter White" {
+		t.Errorf("Character = %q, want Walter White", m.Character)
 	}
 	if m.Birthday != "1956-03-07" {
 		t.Errorf("Birthday = %q, want 1956-03-07", m.Birthday)
 	}
+	if m.Country != "United States" {
+		t.Errorf("Country = %q, want United States", m.Country)
+	}
 	if cast[1].PersonName != "Aaron Paul" {
 		t.Errorf("cast[1].PersonName = %q, want Aaron Paul", cast[1].PersonName)
+	}
+}
+
+func TestScheduleParsesItems(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/schedule") {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, fakeScheduleJSON)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	items, err := c.GetSchedule(context.Background(), "US", "2024-01-15", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2", len(items))
+	}
+	it := items[0]
+	if it.ID != 100001 {
+		t.Errorf("ID = %d, want 100001", it.ID)
+	}
+	if it.Name != "Ep1" {
+		t.Errorf("Name = %q, want Ep1", it.Name)
+	}
+	if it.ShowID != 169 {
+		t.Errorf("ShowID = %d, want 169", it.ShowID)
+	}
+	if it.ShowName != "Breaking Bad" {
+		t.Errorf("ShowName = %q, want Breaking Bad", it.ShowName)
+	}
+	if it.Network != "AMC" {
+		t.Errorf("Network = %q, want AMC", it.Network)
+	}
+	if it.Airdate != "2024-01-15" {
+		t.Errorf("Airdate = %q, want 2024-01-15", it.Airdate)
+	}
+	if it.Airtime != "21:00" {
+		t.Errorf("Airtime = %q, want 21:00", it.Airtime)
+	}
+	if items[1].ShowName != "Test Show" {
+		t.Errorf("items[1].ShowName = %q, want Test Show", items[1].ShowName)
+	}
+}
+
+func TestScheduleLimitRespected(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, fakeScheduleJSON)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	items, err := c.GetSchedule(context.Background(), "US", "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Errorf("len(items) = %d, want 1", len(items))
+	}
+}
+
+func TestScheduleDateParamIncluded(t *testing.T) {
+	var gotURL string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.RawQuery
+		_, _ = fmt.Fprint(w, "[]")
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	_, _ = c.GetSchedule(context.Background(), "GB", "2024-06-01", 0)
+	if !strings.Contains(gotURL, "date=2024-06-01") {
+		t.Errorf("query %q does not contain date=2024-06-01", gotURL)
+	}
+	if !strings.Contains(gotURL, "country=GB") {
+		t.Errorf("query %q does not contain country=GB", gotURL)
+	}
+}
+
+func TestScheduleNoDateParam(t *testing.T) {
+	var gotURL string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.RawQuery
+		_, _ = fmt.Fprint(w, "[]")
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	_, _ = c.GetSchedule(context.Background(), "US", "", 0)
+	if strings.Contains(gotURL, "date=") {
+		t.Errorf("query %q should not contain date= when date is empty", gotURL)
 	}
 }

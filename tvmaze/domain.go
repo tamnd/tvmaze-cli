@@ -30,7 +30,7 @@ func (Domain) Info() kit.DomainInfo {
 		Identity: kit.Identity{
 			Binary: "tvmaze",
 			Short:  "Search TV shows and view today's schedule via TVMaze",
-			Long: `tvmaze searches the TVMaze database and fetches today's TV schedule.
+			Long: `tvmaze searches the TVMaze database and fetches TV schedules.
 No API key required. Data is fetched from the public TVMaze REST API.`,
 			Site: Host,
 			Repo: "https://github.com/tamnd/tvmaze-cli",
@@ -78,12 +78,12 @@ func (Domain) Register(app *kit.App) {
 		Args:    []kit.Arg{{Name: "id", Help: "TVMaze show ID"}},
 	}, castOp)
 
-	// schedule: today's TV schedule
+	// schedule: TV schedule for a country and date
 	kit.Handle(app, kit.OpMeta{
 		Name:    "schedule",
 		Group:   "read",
 		List:    true,
-		Summary: "List today's TV schedule",
+		Summary: "List TV schedule for a country and date",
 	}, scheduleOp)
 }
 
@@ -115,22 +115,23 @@ type searchInput struct {
 }
 
 type showInput struct {
-	ID     string  `kit:"arg"    help:"TVMaze show ID (e.g. 169)"`
+	ID     int     `kit:"arg"    help:"show ID"`
 	Client *Client `kit:"inject"`
 }
 
 type episodesInput struct {
-	ID     string  `kit:"arg"    help:"TVMaze show ID"`
+	ID     int     `kit:"arg"    help:"show ID"`
 	Client *Client `kit:"inject"`
 }
 
 type castInput struct {
-	ID     string  `kit:"arg"    help:"TVMaze show ID"`
+	ID     int     `kit:"arg"    help:"show ID"`
 	Client *Client `kit:"inject"`
 }
 
 type scheduleInput struct {
-	Country string        `kit:"flag"         help:"country code (default US)"`
+	Country string        `kit:"flag"         default:"US" help:"country code e.g. US, GB"`
+	Date    string        `kit:"flag"         help:"date YYYY-MM-DD (defaults to today)"`
 	Limit   int           `kit:"flag,inherit" help:"max results"`
 	Delay   time.Duration `kit:"flag,inherit" help:"minimum spacing between requests"`
 	Client  *Client       `kit:"inject"`
@@ -156,11 +157,7 @@ func searchOp(ctx context.Context, in searchInput, emit func(Show) error) error 
 }
 
 func showOp(ctx context.Context, in showInput, emit func(*Show) error) error {
-	id, err := strconv.Atoi(in.ID)
-	if err != nil {
-		return errs.Usage("show id must be a number, got %q", in.ID)
-	}
-	show, err := in.Client.GetShow(ctx, id)
+	show, err := in.Client.GetShow(ctx, in.ID)
 	if err != nil {
 		return mapErr(err)
 	}
@@ -168,16 +165,12 @@ func showOp(ctx context.Context, in showInput, emit func(*Show) error) error {
 }
 
 func episodesOp(ctx context.Context, in episodesInput, emit func(*Episode) error) error {
-	id, err := strconv.Atoi(in.ID)
-	if err != nil {
-		return errs.Usage("show id must be a number, got %q", in.ID)
-	}
-	episodes, err := in.Client.Episodes(ctx, id)
+	episodes, err := in.Client.Episodes(ctx, in.ID)
 	if err != nil {
 		return mapErr(err)
 	}
 	if len(episodes) == 0 {
-		return errs.NotFound("no episodes found for show %d", id)
+		return errs.NotFound("no episodes found for show %d", in.ID)
 	}
 	for i := range episodes {
 		if err := emit(&episodes[i]); err != nil {
@@ -188,16 +181,12 @@ func episodesOp(ctx context.Context, in episodesInput, emit func(*Episode) error
 }
 
 func castOp(ctx context.Context, in castInput, emit func(*CastMember) error) error {
-	id, err := strconv.Atoi(in.ID)
-	if err != nil {
-		return errs.Usage("show id must be a number, got %q", in.ID)
-	}
-	members, err := in.Client.Cast(ctx, id)
+	members, err := in.Client.Cast(ctx, in.ID)
 	if err != nil {
 		return mapErr(err)
 	}
 	if len(members) == 0 {
-		return errs.NotFound("no cast found for show %d", id)
+		return errs.NotFound("no cast found for show %d", in.ID)
 	}
 	for i := range members {
 		if err := emit(&members[i]); err != nil {
@@ -207,16 +196,16 @@ func castOp(ctx context.Context, in castInput, emit func(*CastMember) error) err
 	return nil
 }
 
-func scheduleOp(ctx context.Context, in scheduleInput, emit func(Show) error) error {
+func scheduleOp(ctx context.Context, in scheduleInput, emit func(ScheduleItem) error) error {
 	limit := in.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = 50
 	}
 	country := in.Country
 	if country == "" {
 		country = "US"
 	}
-	items, err := in.Client.Schedule(ctx, country, limit)
+	items, err := in.Client.GetSchedule(ctx, country, in.Date, limit)
 	if err != nil {
 		return mapErr(err)
 	}
@@ -228,15 +217,18 @@ func scheduleOp(ctx context.Context, in scheduleInput, emit func(Show) error) er
 	return nil
 }
 
-
 // --- Resolver: pure string functions, no network ---
 
 // Classify turns an input into the canonical (type, id).
+// Numeric inputs are treated as show IDs; otherwise treated as a search query.
 func (Domain) Classify(input string) (uriType, id string, err error) {
 	if input == "" {
 		return "", "", errs.Usage("empty tvmaze reference")
 	}
-	return "show", input, nil
+	if _, err := strconv.Atoi(input); err == nil {
+		return "show", input, nil
+	}
+	return "query", input, nil
 }
 
 // Locate returns the live https URL for a (type, id).
@@ -244,6 +236,8 @@ func (Domain) Locate(uriType, id string) (string, error) {
 	switch uriType {
 	case "show":
 		return "https://www.tvmaze.com/shows/" + id, nil
+	case "query":
+		return "https://www.tvmaze.com/search?q=" + id, nil
 	default:
 		return "", errs.Usage("tvmaze has no resource type %q", uriType)
 	}

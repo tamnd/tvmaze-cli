@@ -21,7 +21,7 @@ import (
 )
 
 // Host is the site this client talks to.
-const Host = "tvmaze.com"
+const Host = "api.tvmaze.com"
 
 // Config holds all tunable parameters for the Client.
 type Config struct {
@@ -72,8 +72,8 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Show, e
 		return nil, fmt.Errorf("decode search: %w", err)
 	}
 	items := make([]Show, 0, len(results))
-	for i, r := range results {
-		items = append(items, normalizeShow(r.Show, i+1))
+	for _, r := range results {
+		items = append(items, normalizeShow(r.Show))
 	}
 	if limit > 0 && limit < len(items) {
 		items = items[:limit]
@@ -81,35 +81,113 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Show, e
 	return items, nil
 }
 
-// Schedule fetches today's TV schedule for the given country from /schedule.
-// Country defaults to "US" if empty. Shows are deduplicated by show ID.
-// It returns at most limit results (pass 0 for all).
-func (c *Client) Schedule(ctx context.Context, country string, limit int) ([]Show, error) {
-	if country == "" {
-		country = "US"
-	}
-	u := fmt.Sprintf("%s/schedule?country=%s", c.cfg.BaseURL, neturl.QueryEscape(country))
+// GetShow fetches a single show by its TVMaze ID.
+func (c *Client) GetShow(ctx context.Context, id int) (*Show, error) {
+	u := fmt.Sprintf("%s/shows/%d", c.cfg.BaseURL, id)
 	body, err := c.get(ctx, u)
 	if err != nil {
 		return nil, err
 	}
-	var items []scheduleItem
-	if err := json.Unmarshal(body, &items); err != nil {
+	var r rawShow
+	if err := json.Unmarshal(body, &r); err != nil {
+		return nil, fmt.Errorf("decode show: %w", err)
+	}
+	s := normalizeShow(r)
+	return &s, nil
+}
+
+// Episodes fetches all episodes for a show by its TVMaze ID.
+func (c *Client) Episodes(ctx context.Context, showID int) ([]Episode, error) {
+	u := fmt.Sprintf("%s/shows/%d/episodes", c.cfg.BaseURL, showID)
+	body, err := c.get(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var raw []rawEpisode
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode episodes: %w", err)
+	}
+	out := make([]Episode, len(raw))
+	for i, e := range raw {
+		var rating float64
+		if e.Rating.Average != nil {
+			rating = *e.Rating.Average
+		}
+		out[i] = Episode{
+			ID:      e.ID,
+			Name:    e.Name,
+			Season:  e.Season,
+			Number:  e.Number,
+			Airdate: e.Airdate,
+			Summary: stripHTML(e.Summary),
+			Runtime: e.Runtime,
+			Rating:  rating,
+		}
+	}
+	return out, nil
+}
+
+// Cast fetches the cast for a show by its TVMaze ID.
+func (c *Client) Cast(ctx context.Context, showID int) ([]CastMember, error) {
+	u := fmt.Sprintf("%s/shows/%d/cast", c.cfg.BaseURL, showID)
+	body, err := c.get(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var raw []rawCast
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode cast: %w", err)
+	}
+	out := make([]CastMember, len(raw))
+	for i, m := range raw {
+		out[i] = CastMember{
+			PersonID:   m.Person.ID,
+			PersonName: m.Person.Name,
+			Birthday:   m.Person.Birthday,
+			Country:    m.Person.Country.Name,
+			Character:  m.Character.Name,
+		}
+	}
+	return out, nil
+}
+
+// GetSchedule fetches the TV schedule for the given country and date from /schedule.
+// Country defaults to "US" if empty. Date should be YYYY-MM-DD; if empty, the date param is omitted.
+// It returns at most limit results (pass 0 for all).
+func (c *Client) GetSchedule(ctx context.Context, country, date string, limit int) ([]ScheduleItem, error) {
+	if country == "" {
+		country = "US"
+	}
+	u := fmt.Sprintf("%s/schedule?country=%s", c.cfg.BaseURL, neturl.QueryEscape(country))
+	if date != "" {
+		u += "&date=" + neturl.QueryEscape(date)
+	}
+	body, err := c.get(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var raw []rawScheduleItem
+	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("decode schedule: %w", err)
 	}
-	seen := map[int]bool{}
-	var shows []Show
-	for _, item := range items {
-		if seen[item.Show.ID] {
-			continue
-		}
-		seen[item.Show.ID] = true
-		shows = append(shows, normalizeShow(item.Show, len(shows)+1))
+	out := make([]ScheduleItem, 0, len(raw))
+	for _, item := range raw {
+		out = append(out, ScheduleItem{
+			ID:       item.ID,
+			Name:     item.Name,
+			Season:   item.Season,
+			Number:   item.Number,
+			Airdate:  item.Airdate,
+			Airtime:  item.Airtime,
+			ShowID:   item.Show.ID,
+			ShowName: item.Show.Name,
+			Network:  item.Show.Network.Name,
+		})
 	}
-	if limit > 0 && limit < len(shows) {
-		shows = shows[:limit]
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
 	}
-	return shows, nil
+	return out, nil
 }
 
 func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
@@ -172,87 +250,23 @@ func backoff(attempt int) time.Duration {
 	return min(time.Duration(attempt)*500*time.Millisecond, 5*time.Second)
 }
 
-// GetShow fetches a single show by its TVMaze ID.
-func (c *Client) GetShow(ctx context.Context, id int) (*Show, error) {
-	u := fmt.Sprintf("%s/shows/%d", c.cfg.BaseURL, id)
-	body, err := c.get(ctx, u)
-	if err != nil {
-		return nil, err
-	}
-	var r rawShow
-	if err := json.Unmarshal(body, &r); err != nil {
-		return nil, fmt.Errorf("decode show: %w", err)
-	}
-	s := normalizeShow(r, 0)
-	return &s, nil
-}
-
-// Episodes fetches all episodes for a show by its TVMaze ID.
-func (c *Client) Episodes(ctx context.Context, showID int) ([]Episode, error) {
-	u := fmt.Sprintf("%s/shows/%d/episodes", c.cfg.BaseURL, showID)
-	body, err := c.get(ctx, u)
-	if err != nil {
-		return nil, err
-	}
-	var raw []rawEpisode
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("decode episodes: %w", err)
-	}
-	out := make([]Episode, len(raw))
-	for i, e := range raw {
-		out[i] = Episode{
-			ID:      e.ID,
-			Name:    e.Name,
-			Season:  e.Season,
-			Number:  e.Number,
-			Airdate: e.Airdate,
-			Summary: stripHTML(e.Summary),
-			Runtime: e.Runtime,
-		}
-	}
-	return out, nil
-}
-
-// Cast fetches the cast for a show by its TVMaze ID.
-func (c *Client) Cast(ctx context.Context, showID int) ([]CastMember, error) {
-	u := fmt.Sprintf("%s/shows/%d/cast", c.cfg.BaseURL, showID)
-	body, err := c.get(ctx, u)
-	if err != nil {
-		return nil, err
-	}
-	var raw []rawCast
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("decode cast: %w", err)
-	}
-	out := make([]CastMember, len(raw))
-	for i, m := range raw {
-		out[i] = CastMember{
-			PersonName:    m.Person.Name,
-			CharacterName: m.Character.Name,
-			Birthday:      m.Person.Birthday,
-		}
-	}
-	return out, nil
-}
-
 // normalizeShow converts a rawShow into the public Show type.
-func normalizeShow(r rawShow, rank int) Show {
+func normalizeShow(r rawShow) Show {
 	var rating float64
 	if r.Rating.Average != nil {
 		rating = *r.Rating.Average
 	}
 	return Show{
-		Rank:      rank,
 		ID:        r.ID,
 		Name:      r.Name,
 		Type:      r.Type,
+		Language:  r.Language,
 		Genres:    r.Genres,
 		Status:    r.Status,
 		Premiered: r.Premiered,
 		Rating:    rating,
 		Network:   r.Network.Name,
 		Summary:   stripHTML(r.Summary),
-		URL:       r.URL,
 	}
 }
 
