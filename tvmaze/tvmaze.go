@@ -109,9 +109,13 @@ func (c *Client) Episodes(ctx context.Context, showID int) ([]Episode, error) {
 	}
 	out := make([]Episode, len(raw))
 	for i, e := range raw {
-		var rating float64
+		var rating string
 		if e.Rating.Average != nil {
-			rating = *e.Rating.Average
+			rating = fmt.Sprintf("%.1f", *e.Rating.Average)
+		}
+		summary := stripHTML(e.Summary)
+		if len(summary) > 150 {
+			summary = summary[:150]
 		}
 		out[i] = Episode{
 			ID:      e.ID,
@@ -119,7 +123,7 @@ func (c *Client) Episodes(ctx context.Context, showID int) ([]Episode, error) {
 			Season:  e.Season,
 			Number:  e.Number,
 			Airdate: e.Airdate,
-			Summary: stripHTML(e.Summary),
+			Summary: summary,
 			Runtime: e.Runtime,
 			Rating:  rating,
 		}
@@ -173,14 +177,12 @@ func (c *Client) GetSchedule(ctx context.Context, country, date string, limit in
 	out := make([]ScheduleItem, 0, len(raw))
 	for _, item := range raw {
 		out = append(out, ScheduleItem{
-			ID:       item.ID,
-			Name:     item.Name,
+			ShowName: item.Show.Name,
+			Episode:  item.Name,
 			Season:   item.Season,
 			Number:   item.Number,
 			Airdate:  item.Airdate,
 			Airtime:  item.Airtime,
-			ShowID:   item.Show.ID,
-			ShowName: item.Show.Name,
 			Network:  item.Show.Network.Name,
 		})
 	}
@@ -252,21 +254,26 @@ func backoff(attempt int) time.Duration {
 
 // normalizeShow converts a rawShow into the public Show type.
 func normalizeShow(r rawShow) Show {
-	var rating float64
+	var rating string
 	if r.Rating.Average != nil {
-		rating = *r.Rating.Average
+		rating = fmt.Sprintf("%.1f", *r.Rating.Average)
 	}
+	summary := stripHTML(r.Summary)
+	if len(summary) > 200 {
+		summary = summary[:200]
+	}
+	genres := strings.Join(r.Genres, ", ")
 	return Show{
 		ID:        r.ID,
 		Name:      r.Name,
 		Type:      r.Type,
-		Language:  r.Language,
-		Genres:    r.Genres,
 		Status:    r.Status,
 		Premiered: r.Premiered,
+		Ended:     r.Ended,
 		Rating:    rating,
 		Network:   r.Network.Name,
-		Summary:   stripHTML(r.Summary),
+		Genres:    genres,
+		Summary:   summary,
 	}
 }
 

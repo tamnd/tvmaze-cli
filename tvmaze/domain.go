@@ -120,7 +120,8 @@ type showInput struct {
 }
 
 type episodesInput struct {
-	ID     int     `kit:"arg"    help:"show ID"`
+	ID     int     `kit:"arg"             help:"show ID"`
+	Season int     `kit:"flag"            help:"filter by season number (0 = all)"`
 	Client *Client `kit:"inject"`
 }
 
@@ -142,7 +143,7 @@ type scheduleInput struct {
 func searchOp(ctx context.Context, in searchInput, emit func(Show) error) error {
 	limit := in.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = 10
 	}
 	items, err := in.Client.Search(ctx, in.Query, limit)
 	if err != nil {
@@ -173,6 +174,9 @@ func episodesOp(ctx context.Context, in episodesInput, emit func(*Episode) error
 		return errs.NotFound("no episodes found for show %d", in.ID)
 	}
 	for i := range episodes {
+		if in.Season > 0 && episodes[i].Season != in.Season {
+			continue
+		}
 		if err := emit(&episodes[i]); err != nil {
 			return err
 		}
@@ -199,7 +203,7 @@ func castOp(ctx context.Context, in castInput, emit func(*CastMember) error) err
 func scheduleOp(ctx context.Context, in scheduleInput, emit func(ScheduleItem) error) error {
 	limit := in.Limit
 	if limit <= 0 {
-		limit = 50
+		limit = 20
 	}
 	country := in.Country
 	if country == "" {
