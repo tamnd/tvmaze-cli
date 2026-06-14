@@ -172,8 +172,75 @@ func backoff(attempt int) time.Duration {
 	return min(time.Duration(attempt)*500*time.Millisecond, 5*time.Second)
 }
 
+// GetShow fetches a single show by its TVMaze ID.
+func (c *Client) GetShow(ctx context.Context, id int) (*Show, error) {
+	u := fmt.Sprintf("%s/shows/%d", c.cfg.BaseURL, id)
+	body, err := c.get(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var r rawShow
+	if err := json.Unmarshal(body, &r); err != nil {
+		return nil, fmt.Errorf("decode show: %w", err)
+	}
+	s := normalizeShow(r, 0)
+	return &s, nil
+}
+
+// Episodes fetches all episodes for a show by its TVMaze ID.
+func (c *Client) Episodes(ctx context.Context, showID int) ([]Episode, error) {
+	u := fmt.Sprintf("%s/shows/%d/episodes", c.cfg.BaseURL, showID)
+	body, err := c.get(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var raw []rawEpisode
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode episodes: %w", err)
+	}
+	out := make([]Episode, len(raw))
+	for i, e := range raw {
+		out[i] = Episode{
+			ID:      e.ID,
+			Name:    e.Name,
+			Season:  e.Season,
+			Number:  e.Number,
+			Airdate: e.Airdate,
+			Summary: stripHTML(e.Summary),
+			Runtime: e.Runtime,
+		}
+	}
+	return out, nil
+}
+
+// Cast fetches the cast for a show by its TVMaze ID.
+func (c *Client) Cast(ctx context.Context, showID int) ([]CastMember, error) {
+	u := fmt.Sprintf("%s/shows/%d/cast", c.cfg.BaseURL, showID)
+	body, err := c.get(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var raw []rawCast
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode cast: %w", err)
+	}
+	out := make([]CastMember, len(raw))
+	for i, m := range raw {
+		out[i] = CastMember{
+			PersonName:    m.Person.Name,
+			CharacterName: m.Character.Name,
+			Birthday:      m.Person.Birthday,
+		}
+	}
+	return out, nil
+}
+
 // normalizeShow converts a rawShow into the public Show type.
 func normalizeShow(r rawShow, rank int) Show {
+	var rating float64
+	if r.Rating.Average != nil {
+		rating = *r.Rating.Average
+	}
 	return Show{
 		Rank:      rank,
 		ID:        r.ID,
@@ -182,7 +249,7 @@ func normalizeShow(r rawShow, rank int) Show {
 		Genres:    r.Genres,
 		Status:    r.Status,
 		Premiered: r.Premiered,
-		Rating:    r.Rating.Average,
+		Rating:    rating,
 		Network:   r.Network.Name,
 		Summary:   stripHTML(r.Summary),
 		URL:       r.URL,

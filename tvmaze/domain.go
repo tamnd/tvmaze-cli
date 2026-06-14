@@ -2,6 +2,7 @@ package tvmaze
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/tamnd/any-cli/kit"
@@ -50,6 +51,33 @@ func (Domain) Register(app *kit.App) {
 		Args:    []kit.Arg{{Name: "query", Help: "show name to search"}},
 	}, searchOp)
 
+	// show: get a single show by TVMaze ID
+	kit.Handle(app, kit.OpMeta{
+		Name:    "show",
+		Group:   "read",
+		Single:  true,
+		Summary: "Get a TV show by its TVMaze ID",
+		Args:    []kit.Arg{{Name: "id", Help: "TVMaze show ID (e.g. 169)"}},
+	}, showOp)
+
+	// episodes: list all episodes for a show
+	kit.Handle(app, kit.OpMeta{
+		Name:    "episodes",
+		Group:   "read",
+		List:    true,
+		Summary: "List all episodes for a show",
+		Args:    []kit.Arg{{Name: "id", Help: "TVMaze show ID"}},
+	}, episodesOp)
+
+	// cast: list cast members for a show
+	kit.Handle(app, kit.OpMeta{
+		Name:    "cast",
+		Group:   "read",
+		List:    true,
+		Summary: "List cast members for a show",
+		Args:    []kit.Arg{{Name: "id", Help: "TVMaze show ID"}},
+	}, castOp)
+
 	// schedule: today's TV schedule
 	kit.Handle(app, kit.OpMeta{
 		Name:    "schedule",
@@ -86,6 +114,21 @@ type searchInput struct {
 	Client *Client       `kit:"inject"`
 }
 
+type showInput struct {
+	ID     string  `kit:"arg"    help:"TVMaze show ID (e.g. 169)"`
+	Client *Client `kit:"inject"`
+}
+
+type episodesInput struct {
+	ID     string  `kit:"arg"    help:"TVMaze show ID"`
+	Client *Client `kit:"inject"`
+}
+
+type castInput struct {
+	ID     string  `kit:"arg"    help:"TVMaze show ID"`
+	Client *Client `kit:"inject"`
+}
+
 type scheduleInput struct {
 	Country string        `kit:"flag"         help:"country code (default US)"`
 	Limit   int           `kit:"flag,inherit" help:"max results"`
@@ -112,6 +155,58 @@ func searchOp(ctx context.Context, in searchInput, emit func(Show) error) error 
 	return nil
 }
 
+func showOp(ctx context.Context, in showInput, emit func(*Show) error) error {
+	id, err := strconv.Atoi(in.ID)
+	if err != nil {
+		return errs.Usage("show id must be a number, got %q", in.ID)
+	}
+	show, err := in.Client.GetShow(ctx, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	return emit(show)
+}
+
+func episodesOp(ctx context.Context, in episodesInput, emit func(*Episode) error) error {
+	id, err := strconv.Atoi(in.ID)
+	if err != nil {
+		return errs.Usage("show id must be a number, got %q", in.ID)
+	}
+	episodes, err := in.Client.Episodes(ctx, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	if len(episodes) == 0 {
+		return errs.NotFound("no episodes found for show %d", id)
+	}
+	for i := range episodes {
+		if err := emit(&episodes[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func castOp(ctx context.Context, in castInput, emit func(*CastMember) error) error {
+	id, err := strconv.Atoi(in.ID)
+	if err != nil {
+		return errs.Usage("show id must be a number, got %q", in.ID)
+	}
+	members, err := in.Client.Cast(ctx, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	if len(members) == 0 {
+		return errs.NotFound("no cast found for show %d", id)
+	}
+	for i := range members {
+		if err := emit(&members[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func scheduleOp(ctx context.Context, in scheduleInput, emit func(Show) error) error {
 	limit := in.Limit
 	if limit <= 0 {
@@ -132,6 +227,7 @@ func scheduleOp(ctx context.Context, in scheduleInput, emit func(Show) error) er
 	}
 	return nil
 }
+
 
 // --- Resolver: pure string functions, no network ---
 

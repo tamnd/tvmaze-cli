@@ -209,3 +209,119 @@ func TestScheduleDeduplicates(t *testing.T) {
 		t.Errorf("len(items) = %d, want 1 (deduplication)", len(items))
 	}
 }
+
+const fakeShowJSON = `{"id":169,"name":"Breaking Bad","type":"Scripted","genres":["Drama","Crime","Thriller"],"status":"Ended","premiered":"2008-01-20","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A high school chemistry teacher.</p>","url":"https://www.tvmaze.com/shows/169/breaking-bad"}`
+
+const fakeEpisodesJSON = `[
+  {"id":1,"name":"Pilot","season":1,"number":1,"airdate":"2008-01-20","summary":"<p>Walter White.</p>","runtime":58},
+  {"id":2,"name":"Cat's in the Bag","season":1,"number":2,"airdate":"2008-01-27","summary":"<p>Walt and Jesse.</p>","runtime":48}
+]`
+
+const fakeCastJSON = `[
+  {"person":{"name":"Bryan Cranston","birthday":"1956-03-07"},"character":{"name":"Walter White"}},
+  {"person":{"name":"Aaron Paul","birthday":"1979-08-27"},"character":{"name":"Jesse Pinkman"}}
+]`
+
+func TestGetShowParses(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/shows/") {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, fakeShowJSON)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	show, err := c.GetShow(context.Background(), 169)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if show.ID != 169 {
+		t.Errorf("ID = %d, want 169", show.ID)
+	}
+	if show.Name != "Breaking Bad" {
+		t.Errorf("Name = %q, want Breaking Bad", show.Name)
+	}
+	if show.Rating != 9.2 {
+		t.Errorf("Rating = %v, want 9.2", show.Rating)
+	}
+	if strings.Contains(show.Summary, "<p>") {
+		t.Errorf("Summary contains HTML: %q", show.Summary)
+	}
+	if show.Network != "AMC" {
+		t.Errorf("Network = %q, want AMC", show.Network)
+	}
+}
+
+func TestEpisodesParsesItems(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/episodes") {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, fakeEpisodesJSON)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	eps, err := c.Episodes(context.Background(), 169)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eps) != 2 {
+		t.Fatalf("len(eps) = %d, want 2", len(eps))
+	}
+	ep := eps[0]
+	if ep.ID != 1 {
+		t.Errorf("ID = %d, want 1", ep.ID)
+	}
+	if ep.Name != "Pilot" {
+		t.Errorf("Name = %q, want Pilot", ep.Name)
+	}
+	if ep.Season != 1 {
+		t.Errorf("Season = %d, want 1", ep.Season)
+	}
+	if ep.Number != 1 {
+		t.Errorf("Number = %d, want 1", ep.Number)
+	}
+	if ep.Airdate != "2008-01-20" {
+		t.Errorf("Airdate = %q, want 2008-01-20", ep.Airdate)
+	}
+	if ep.Runtime != 58 {
+		t.Errorf("Runtime = %d, want 58", ep.Runtime)
+	}
+	if strings.Contains(ep.Summary, "<p>") {
+		t.Errorf("Summary contains HTML: %q", ep.Summary)
+	}
+}
+
+func TestCastParsesItems(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/cast") {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, fakeCastJSON)
+	}))
+	defer ts.Close()
+
+	c := newTestClient(ts)
+	cast, err := c.Cast(context.Background(), 169)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cast) != 2 {
+		t.Fatalf("len(cast) = %d, want 2", len(cast))
+	}
+	m := cast[0]
+	if m.PersonName != "Bryan Cranston" {
+		t.Errorf("PersonName = %q, want Bryan Cranston", m.PersonName)
+	}
+	if m.CharacterName != "Walter White" {
+		t.Errorf("CharacterName = %q, want Walter White", m.CharacterName)
+	}
+	if m.Birthday != "1956-03-07" {
+		t.Errorf("Birthday = %q, want 1956-03-07", m.Birthday)
+	}
+	if cast[1].PersonName != "Aaron Paul" {
+		t.Errorf("cast[1].PersonName = %q, want Aaron Paul", cast[1].PersonName)
+	}
+}
