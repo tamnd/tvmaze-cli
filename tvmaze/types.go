@@ -22,7 +22,7 @@ type Episode struct {
 	Number  int    `json:"number"`
 	Airdate string `json:"airdate,omitempty"`
 	Runtime int    `json:"runtime,omitempty"`
-	Rating  string `json:"rating"`   // formatted as "%.1f"
+	Rating  string `json:"rating"`            // formatted as "%.1f"
 	Summary string `json:"summary,omitempty"` // HTML stripped, first 150 chars
 }
 
@@ -96,10 +96,10 @@ type rawEpisode struct {
 
 type rawCast struct {
 	Person struct {
-		ID      int    `json:"id"`
-		Name    string `json:"name"`
+		ID       int    `json:"id"`
+		Name     string `json:"name"`
 		Birthday string `json:"birthday"`
-		Country struct {
+		Country  struct {
 			Name string `json:"name"`
 		} `json:"country"`
 	} `json:"person"`
