@@ -1,0 +1,10 @@
+title       = "tvmaze"
+baseURL     = "https://tvmaze-cli.tamnd.com/"
+description = "A command line for tvmaze."
+contentDir  = "content"
+outputDir   = "public"
+theme       = "tago-doks"
+syntaxHighlight = "true"
+
+[params]
+github = "https://github.com/tamnd/tvmaze-cli"
