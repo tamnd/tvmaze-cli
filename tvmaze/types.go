@@ -2,28 +2,28 @@ package tvmaze
 
 // Show is the public output record for a TV show.
 type Show struct {
-	ID        int      `kit:"id" json:"id"`
-	Name      string   `json:"name"`
-	Genres    []string `json:"genres"`
-	Status    string   `json:"status"`
-	Rating    float64  `json:"rating"`
-	Network   string   `json:"network"`
-	Premiered string   `json:"premiered"`
-	Language  string   `json:"language"`
-	Type      string   `json:"type"`
-	Summary   string   `json:"summary"`
+	ID        int    `kit:"id" json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	Premiered string `json:"premiered"`
+	Ended     string `json:"ended"`
+	Rating    string `json:"rating"`  // formatted as "%.1f"
+	Network   string `json:"network"` // network.name
+	Genres    string `json:"genres"`  // comma-joined
+	Summary   string `json:"summary"` // HTML stripped, first 200 chars
 }
 
 // Episode is one episode record from the /shows/{id}/episodes endpoint.
 type Episode struct {
-	ID      int     `kit:"id" json:"id"`
-	Name    string  `json:"name"`
-	Season  int     `json:"season"`
-	Number  int     `json:"number"`
-	Airdate string  `json:"airdate,omitempty"`
-	Runtime int     `json:"runtime,omitempty"`
-	Rating  float64 `json:"rating"`
-	Summary string  `json:"summary,omitempty"`
+	ID      int    `kit:"id" json:"id"`
+	Name    string `json:"name"`
+	Season  int    `json:"season"`
+	Number  int    `json:"number"`
+	Airdate string `json:"airdate,omitempty"`
+	Runtime int    `json:"runtime,omitempty"`
+	Rating  string `json:"rating"`   // formatted as "%.1f"
+	Summary string `json:"summary,omitempty"` // HTML stripped, first 150 chars
 }
 
 // CastMember is one cast entry from the /shows/{id}/cast endpoint.
@@ -37,14 +37,12 @@ type CastMember struct {
 
 // ScheduleItem is one entry from the /schedule endpoint.
 type ScheduleItem struct {
-	ID       int    `kit:"id" json:"id"`
-	Name     string `json:"name"`
+	ShowName string `kit:"id" json:"show"`
+	Episode  string `json:"episode"`
 	Season   int    `json:"season"`
 	Number   int    `json:"number"`
 	Airdate  string `json:"airdate"`
 	Airtime  string `json:"airtime"`
-	ShowID   int    `json:"show_id"`
-	ShowName string `json:"show_name"`
 	Network  string `json:"network"`
 }
 
@@ -79,6 +77,7 @@ type rawShow struct {
 		Name string `json:"name"`
 	} `json:"network"`
 	Premiered string `json:"premiered"`
+	Ended     string `json:"ended"`
 	Summary   string `json:"summary"`
 }
 

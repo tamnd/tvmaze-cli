@@ -21,11 +21,12 @@ const fakeScheduleJSON = `[
   {"id":100002,"name":"Ep2","season":1,"number":2,"airdate":"2024-01-15","airtime":"22:00","show":{"id":999,"name":"Test Show","network":{"name":"NBC"}}}
 ]`
 
-const fakeShowJSON = `{"id":169,"name":"Breaking Bad","type":"Scripted","language":"English","genres":["Drama","Crime","Thriller"],"status":"Ended","premiered":"2008-01-20","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A high school chemistry teacher.</p>"}`
+const fakeShowJSON = `{"id":169,"name":"Breaking Bad","type":"Scripted","language":"English","genres":["Drama","Crime","Thriller"],"status":"Ended","premiered":"2008-01-20","ended":"2013-09-29","rating":{"average":9.2},"network":{"name":"AMC"},"summary":"<p>A high school chemistry teacher.</p>"}`
 
 const fakeEpisodesJSON = `[
   {"id":1,"name":"Pilot","season":1,"number":1,"airdate":"2008-01-20","summary":"<p>Walter White.</p>","runtime":58,"rating":{"average":8.0}},
-  {"id":2,"name":"Cat's in the Bag","season":1,"number":2,"airdate":"2008-01-27","summary":"<p>Walt and Jesse.</p>","runtime":48,"rating":{"average":7.5}}
+  {"id":2,"name":"Cat's in the Bag","season":1,"number":2,"airdate":"2008-01-27","summary":"<p>Walt and Jesse.</p>","runtime":48,"rating":{"average":7.5}},
+  {"id":10,"name":"Seven Thirty-Seven","season":2,"number":1,"airdate":"2009-03-08","summary":"<p>Season 2 premiere.</p>","runtime":47,"rating":{"average":8.3}}
 ]`
 
 const fakeCastJSON = `[
@@ -81,14 +82,14 @@ func TestSearchParsesItems(t *testing.T) {
 	if items[0].Name != "Breaking Bad" {
 		t.Errorf("items[0].Name = %q, want Breaking Bad", items[0].Name)
 	}
-	if items[0].Rating != 9.2 {
-		t.Errorf("items[0].Rating = %v, want 9.2", items[0].Rating)
+	if items[0].Rating != "9.2" {
+		t.Errorf("items[0].Rating = %q, want 9.2", items[0].Rating)
 	}
 	if items[0].Network != "AMC" {
 		t.Errorf("items[0].Network = %q, want AMC", items[0].Network)
 	}
-	if items[0].Language != "English" {
-		t.Errorf("items[0].Language = %q, want English", items[0].Language)
+	if items[0].Genres != "Drama, Crime" {
+		t.Errorf("items[0].Genres = %q, want Drama, Crime", items[0].Genres)
 	}
 	if strings.Contains(items[0].Summary, "<p>") {
 		t.Errorf("items[0].Summary contains HTML tags: %q", items[0].Summary)
@@ -158,8 +159,8 @@ func TestGetShowParses(t *testing.T) {
 	if show.Name != "Breaking Bad" {
 		t.Errorf("Name = %q, want Breaking Bad", show.Name)
 	}
-	if show.Rating != 9.2 {
-		t.Errorf("Rating = %v, want 9.2", show.Rating)
+	if show.Rating != "9.2" {
+		t.Errorf("Rating = %q, want 9.2", show.Rating)
 	}
 	if strings.Contains(show.Summary, "<p>") {
 		t.Errorf("Summary contains HTML: %q", show.Summary)
@@ -167,8 +168,11 @@ func TestGetShowParses(t *testing.T) {
 	if show.Network != "AMC" {
 		t.Errorf("Network = %q, want AMC", show.Network)
 	}
-	if show.Language != "English" {
-		t.Errorf("Language = %q, want English", show.Language)
+	if show.Ended != "2013-09-29" {
+		t.Errorf("Ended = %q, want 2013-09-29", show.Ended)
+	}
+	if show.Genres != "Drama, Crime, Thriller" {
+		t.Errorf("Genres = %q, want Drama, Crime, Thriller", show.Genres)
 	}
 }
 
@@ -186,8 +190,8 @@ func TestEpisodesParsesItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(eps) != 2 {
-		t.Fatalf("len(eps) = %d, want 2", len(eps))
+	if len(eps) != 3 {
+		t.Fatalf("len(eps) = %d, want 3", len(eps))
 	}
 	ep := eps[0]
 	if ep.ID != 1 {
@@ -208,8 +212,8 @@ func TestEpisodesParsesItems(t *testing.T) {
 	if ep.Runtime != 58 {
 		t.Errorf("Runtime = %d, want 58", ep.Runtime)
 	}
-	if ep.Rating != 8.0 {
-		t.Errorf("Rating = %v, want 8.0", ep.Rating)
+	if ep.Rating != "8.0" {
+		t.Errorf("Rating = %q, want 8.0", ep.Rating)
 	}
 	if strings.Contains(ep.Summary, "<p>") {
 		t.Errorf("Summary contains HTML: %q", ep.Summary)
@@ -272,17 +276,11 @@ func TestScheduleParsesItems(t *testing.T) {
 		t.Fatalf("len(items) = %d, want 2", len(items))
 	}
 	it := items[0]
-	if it.ID != 100001 {
-		t.Errorf("ID = %d, want 100001", it.ID)
-	}
-	if it.Name != "Ep1" {
-		t.Errorf("Name = %q, want Ep1", it.Name)
-	}
-	if it.ShowID != 169 {
-		t.Errorf("ShowID = %d, want 169", it.ShowID)
-	}
 	if it.ShowName != "Breaking Bad" {
 		t.Errorf("ShowName = %q, want Breaking Bad", it.ShowName)
+	}
+	if it.Episode != "Ep1" {
+		t.Errorf("Episode = %q, want Ep1", it.Episode)
 	}
 	if it.Network != "AMC" {
 		t.Errorf("Network = %q, want AMC", it.Network)

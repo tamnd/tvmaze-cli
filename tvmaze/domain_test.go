@@ -98,6 +98,7 @@ func TestNormalizeShow(t *testing.T) {
 		ID:     169,
 		Name:   "Breaking Bad",
 		Status: "Ended",
+		Genres: []string{"Drama", "Crime"},
 		Rating: struct {
 			Average *float64 `json:"average"`
 		}{Average: &avg},
@@ -110,8 +111,8 @@ func TestNormalizeShow(t *testing.T) {
 	if s.ID != 169 {
 		t.Errorf("ID = %d, want 169", s.ID)
 	}
-	if s.Rating != 9.2 {
-		t.Errorf("Rating = %v, want 9.2", s.Rating)
+	if s.Rating != "9.2" {
+		t.Errorf("Rating = %q, want 9.2", s.Rating)
 	}
 	if s.Network != "AMC" {
 		t.Errorf("Network = %q, want AMC", s.Network)
@@ -119,12 +120,15 @@ func TestNormalizeShow(t *testing.T) {
 	if s.Summary != "A teacher." {
 		t.Errorf("Summary = %q, want %q", s.Summary, "A teacher.")
 	}
+	if s.Genres != "Drama, Crime" {
+		t.Errorf("Genres = %q, want Drama, Crime", s.Genres)
+	}
 }
 
 func TestNormalizeShowNilRating(t *testing.T) {
 	r := rawShow{ID: 1, Name: "Test"}
 	s := normalizeShow(r)
-	if s.Rating != 0 {
-		t.Errorf("Rating = %v, want 0 for nil average", s.Rating)
+	if s.Rating != "" {
+		t.Errorf("Rating = %q, want empty string for nil average", s.Rating)
 	}
 }
